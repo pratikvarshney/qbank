@@ -28,8 +28,8 @@ res.sendFile(__dirname + '/public/forms/form.html');
 
 app.post("/",function(req,res){
 
-var numQues = 10;
-var totalDuration = 60 * 60;
+var numQues = req.body.numques.toString();
+var totalDuration = Number(req.body.dur) * 60;
 
 connection.query('SELECT qid,duration from mcqbank order by duration', function(err, rows, fields) {
   if (!err)
@@ -57,7 +57,7 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 	var arr=[];
 	for(var i=0; i<ques.length; i++)
 	{
-		arr.push(Number(ques[i].duration));
+		arr.push(Number(ques[i].qid));
 	}
 
 	connection.query('SELECT * from mcqbank where qid in (' + arr.toString() + ');', function(err, rows2, fields2) {
