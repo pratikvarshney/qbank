@@ -12,6 +12,16 @@ var app = express();
 
 app.use(bodyParser());
 
+function random(maxval)
+{
+	return Math.floor(Math.random()*(maxval-1));
+}
+
+
+function secondsToString(sec)
+{
+	return Math.floor(sec/3600) + ':' + Math.floor((sec%3600)/60) + ':' + (sec%60);
+}
 
 connection.connect(function(err){
 if(!err) {
@@ -67,16 +77,43 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 	  else
 	    console.log('Error while performing Question Query.');
 
-	  res.send(rows2);
+	  //res.send(rows2);
+
+	  //PDF
+		var PDFDocument = require('pdfkit');
+		var fs = require('fs');
+		var doc = new PDFDocument();
+
+		var stream = doc.pipe(fs.createWriteStream('output.pdf'));
+		 
+		doc.fontSize(40).text('Question Paper', {'align':'center'});
+		doc.moveDown().fontSize(20).text('Total Questions = ' + numQues);
+		doc.moveDown().fontSize(20).text('Total Duration = ' + Math.floor(totalDuration/3600) + ' Hours ' + Math.floor((totalDuration%3600)/60) + ' Minutes ' + (totalDuration%60) + ' Seconds');
+		 
+		doc.addPage().fontSize(20);
+
+		for(var i=0; i<rows2.length; i++)
+		{
+			doc.moveDown().text('Q ' + (i+1) + ': ' + rows2[i].question.toString());
+			doc.text(secondsToString(rows2[i].duration), {'align':'right'});
+			doc.moveDown().text('a) ' + rows2[i].opt1);
+			doc.moveDown().text('b) ' + rows2[i].opt2);
+			doc.moveDown().text('c) ' + rows2[i].opt3);
+			doc.moveDown().text('d) ' + rows2[i].opt4);
+			doc.moveDown();
+		}
+
+		doc.end();
+
+		stream.on('finish', function() {
+		  console.log('Done');
+		  res.download('output.pdf');
+		});
+		//End PDF
 	});
 
 
   });
 });
-
-function random(maxval)
-{
-	return Math.floor(Math.random()*(maxval-1));
-}
 
 app.listen(3000);
