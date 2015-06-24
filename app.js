@@ -14,13 +14,45 @@ app.use(bodyParser());
 
 function random(maxval)
 {
-	return Math.floor(Math.random()*(maxval-1));
+	return Math.floor(Math.random()*Number.MAX_SAFE_INTEGER)%maxval;
 }
 
 
 function secondsToString(sec)
 {
 	return Math.floor(sec/3600) + ':' + Math.floor((sec%3600)/60) + ':' + (sec%60);
+}
+
+function diff(a, b)
+{
+	if(a>b) return a-b;
+	return b-a;
+}
+
+function minTimeIndex(arr, start, end)
+{
+	var min=start;
+	for(var i=start+1; i<=end; i++)
+	{
+		if(arr[min].duration>arr[i].duration)
+		{
+			min = i;
+		}
+	}
+	return min;
+}
+
+function maxTimeIndex(arr, start, end)
+{
+	var max=start;
+	for(var i=start+1; i<=end; i++)
+	{
+		if(arr[max].duration<arr[i].duration)
+		{
+			max = i;
+		}
+	}
+	return max;
 }
 
 connection.connect(function(err){
@@ -48,26 +80,75 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
     console.log('Error while performing Query.');
 
 	//get random ques
-	var maxm = rows.length;
+	var quesArr = [];
 	for(var i=0; i<numQues; i++)
 	{
-		var r = random(maxm);
-		//swap
-		var temp = rows[i];
-		rows[i] = rows[r];
-		rows[r] = temp;
+		var r = random(rows.length);
+		quesArr.push(rows.splice(r, 1)[0]);
 	}
 
-	//fix
-	//---
-	//fix end
+	//simulated anneling
+	var currentSUM = 0;
+	for(var i=0; i<numQues; i++)
+	{
+		currentSUM += Number(quesArr[i].duration);
+	}
+	var deletedArr=[];
+
+	while((diff(currentSUM, totalDuration) > (0.10 * totalDuration)) && rows.length>0)
+	{
+		var maxTry = 10;
+		if(currentSUM>totalDuration)
+		{
+			var maxIndex = maxTimeIndex(quesArr, 0, quesArr.length-1);
+			var randomIndex;
+			for(var t=0; t<maxTry; t++)
+			{
+				randomIndex = random(rows.length);
+				if(Number(quesArr[maxIndex].duration) > Number(rows[randomIndex].duration))
+				{
+					break;
+				}
+			}
+			if(Number(quesArr[maxIndex].duration) > Number(rows[randomIndex].duration))
+			{
+				
+				currentSUM -= Number(quesArr[maxIndex].duration);
+				currentSUM += Number(rows[randomIndex].duration);
+				deletedArr.push(quesArr.splice(maxIndex, 1)[0]);
+				quesArr.push(rows.splice(randomIndex, 1)[0]);
+			}
+			else break;
+		}
+		else
+		{
+			var minIndex = minTimeIndex(quesArr, 0, quesArr.length-1);
+			var randomIndex;
+			for(var t=0; t<maxTry; t++)
+			{
+				randomIndex = random(rows.length);
+				if(Number(quesArr[minIndex].duration) < Number(rows[randomIndex].duration))
+				{
+					break;
+				}
+			}
+			if(Number(quesArr[minIndex].duration) < Number(rows[randomIndex].duration))
+			{
+				
+				currentSUM -= Number(quesArr[minIndex].duration);
+				currentSUM += Number(rows[randomIndex].duration);
+				deletedArr.push(quesArr.splice(minIndex, 1)[0]);
+				quesArr.push(rows.splice(randomIndex, 1)[0]);
+			}
+			else break;
+		}
+	}
 
 	//get ques
-	var ques = rows.splice(0, numQues);
 	var arr=[];
-	for(var i=0; i<ques.length; i++)
+	for(var i=0; i<quesArr.length; i++)
 	{
-		arr.push(Number(ques[i].qid));
+		arr.push(Number(quesArr[i].qid));
 	}
 
 	connection.query('SELECT * from mcqbank where qid in (' + arr.toString() + ');', function(err, rows2, fields2) {
@@ -89,7 +170,8 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 		doc.fontSize(40).text('Question Paper', {'align':'center'});
 		doc.moveDown().fontSize(20).text('Total Questions = ' + numQues);
 		doc.moveDown().fontSize(20).text('Total Duration = ' + Math.floor(totalDuration/3600) + ' Hours ' + Math.floor((totalDuration%3600)/60) + ' Minutes ' + (totalDuration%60) + ' Seconds');
-		 
+		doc.moveDown().moveDown().fontSize(16).text('Estimated Duration = ' + Math.floor(currentSUM/3600) + ' Hours ' + Math.floor((currentSUM%3600)/60) + ' Minutes ' + (currentSUM%60) + ' Seconds');
+
 		doc.addPage().fontSize(20);
 
 		for(var i=0; i<rows2.length; i++)
