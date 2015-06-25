@@ -23,6 +23,12 @@ function secondsToString(sec)
 	return Math.floor(sec/3600) + ':' + Math.floor((sec%3600)/60) + ':' + (sec%60);
 }
 
+function durationToString(sec)
+{
+	return Math.floor(sec/3600) + ' Hours ' + Math.floor((sec%3600)/60) + ' Minutes ' + (sec%60) + ' Seconds';
+
+}
+
 function diff(a, b)
 {
 	if(a>b) return a-b;
@@ -55,30 +61,8 @@ function maxTimeIndex(arr, start, end)
 	return max;
 }
 
-connection.connect(function(err){
-if(!err) {
-    console.log("Database is connected ... \n\n");  
-} else {
-    console.log("Error connecting database ... \n\n");  
-}
-});
-
-app.get("/",function(req,res){
-res.sendFile(__dirname + '/public/forms/form.html');
-});
-
-
-app.post("/",function(req,res){
-
-var numQues = req.body.numques.toString();
-var totalDuration = Number(req.body.dur) * 60;
-
-connection.query('SELECT qid,duration from mcqbank order by duration', function(err, rows, fields) {
-  if (!err)
-    console.log('Query Done.');
-  else
-    console.log('Error while performing Query.');
-
+function getQuesArr(rows, numQues, totalDuration)
+{
 	//get random ques
 	var quesArr = [];
 	for(var i=0; i<numQues; i++)
@@ -87,7 +71,7 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 		quesArr.push(rows.splice(r, 1)[0]);
 	}
 
-	//simulated anneling
+	//something similar to simulated annealing
 	var currentSUM = 0;
 	for(var i=0; i<numQues; i++)
 	{
@@ -150,6 +134,50 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 	{
 		arr.push(Number(quesArr[i].qid));
 	}
+	return arr;
+}
+
+connection.connect(function(err){
+if(!err) {
+    console.log("Database is connected ... \n\n");  
+} else {
+    console.log("Error connecting database ... \n\n");  
+}
+});
+
+app.get("/",function(req,res){
+res.sendFile(__dirname + '/public/forms/form.html');
+});
+
+
+app.post("/",function(req,res){
+
+	var numSub = Number(req.body.numsub);
+	var numMCQ = Number(req.body.nummcq);
+
+	var totalDuration = Number(req.body.dur) * 60;
+
+
+connection.query('SELECT * from subqbank order by RAND() limit '+ numSub, function(errSub, rowsSub, fieldsSub) {
+  if (!errSub)
+    console.log('Subjective Query Done.');
+  else
+    console.log('Error while performing Subjective Query.');
+
+	var totalSubDuration = 0;
+	for(var i=0; i<rowsSub.length; i++)
+	{
+		totalSubDuration += Number(rowsSub[i].duration);
+	}
+	var totalMCQDuration = totalDuration - totalSubDuration;
+
+connection.query('SELECT qid,duration from mcqbank order by duration', function(errMCQ, rowsMCQ, fieldsMCQ) {
+  if (!errMCQ)
+    console.log('Query Done.');
+  else
+    console.log('Error while performing Query.');
+
+	var arr = getQuesArr(rowsMCQ, numMCQ, totalMCQDuration);
 
 	connection.query('SELECT * from mcqbank where qid in (' + arr.toString() + ');', function(err, rows2, fields2) {
 	connection.end();
@@ -157,8 +185,6 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 	    console.log('Question Query Done.');
 	  else
 	    console.log('Error while performing Question Query.');
-
-	  //res.send(rows2);
 
 	  //PDF
 		var PDFDocument = require('pdfkit');
@@ -168,11 +194,21 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 		var stream = doc.pipe(fs.createWriteStream('output.pdf'));
 		 
 		doc.fontSize(40).text('Question Paper', {'align':'center'});
-		doc.moveDown().fontSize(20).text('Total Questions = ' + numQues);
-		doc.moveDown().fontSize(20).text('Total Duration = ' + Math.floor(totalDuration/3600) + ' Hours ' + Math.floor((totalDuration%3600)/60) + ' Minutes ' + (totalDuration%60) + ' Seconds');
-		doc.moveDown().moveDown().fontSize(16).text('Estimated Duration = ' + Math.floor(currentSUM/3600) + ' Hours ' + Math.floor((currentSUM%3600)/60) + ' Minutes ' + (currentSUM%60) + ' Seconds');
+		doc.moveDown().fontSize(20).text('Total MCQ Questions = ' + numMCQ);
+		doc.moveDown().fontSize(20).text('Total Subjective Questions = ' + numSub);
+		doc.moveDown().fontSize(20).text('Total Duration = ' + durationToString(totalDuration));
 
-		doc.addPage().fontSize(20);
+		var estimatedMCQDuration = 0;
+		for(var i=0; i<rows2.length; i++)
+		{
+			estimatedMCQDuration += Number(rows2[i].duration);
+		}
+		
+		doc.moveDown().moveDown().fontSize(16).text('Estimated Total Duration = ' + durationToString(estimatedMCQDuration+totalSubDuration));
+
+		doc.addPage();
+		doc.fontSize(40).text('Multiple Choice Questions', {'align':'center'});
+		doc.fontSize(14);
 
 		for(var i=0; i<rows2.length; i++)
 		{
@@ -182,6 +218,17 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 			doc.moveDown().text('b) ' + rows2[i].opt2);
 			doc.moveDown().text('c) ' + rows2[i].opt3);
 			doc.moveDown().text('d) ' + rows2[i].opt4);
+			doc.moveDown();
+		}
+
+		doc.addPage();
+		doc.fontSize(40).text('Subjective Questions', {'align':'center'});
+		doc.fontSize(14);
+
+		for(var i=0; i<rowsSub.length; i++)
+		{
+			doc.moveDown().text('Q ' + (i+1) + ': ' + rowsSub[i].question.toString());
+			doc.text(secondsToString(rowsSub[i].duration), {'align':'right'});
 			doc.moveDown();
 		}
 
@@ -196,6 +243,8 @@ connection.query('SELECT qid,duration from mcqbank order by duration', function(
 
 
   });
+
+});
 });
 
 app.listen(3000);
