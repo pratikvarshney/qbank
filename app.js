@@ -157,6 +157,8 @@ app.post("/",function(req,res){
 
 	var totalDuration = Number(req.body.dur) * 60;
 
+	var limitSubDuration = Math.floor(totalDuration/numSub);
+
 
 connection.query('SELECT * from subqbank order by RAND() limit '+ numSub, function(errSub, rowsSub, fieldsSub) {
   if (!errSub)
