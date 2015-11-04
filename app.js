@@ -1,7 +1,7 @@
 var express    = require("express");
 var mysql      = require('mysql');
 var bodyParser = require('body-parser');
-
+/* Added sample comment */
 var connection = mysql.createConnection({
   host     : 'localhost',
   user     : 'root',
